@@ -20,8 +20,8 @@
       (~optional [shared   shared-expr:expr    ...])
       (~optional [pre      pre-expr:expr       ...])
       [(~peek-not (~or shared pre)) body:expr ...+]
-      (~optional [catch    clause:catch-clause ...])
       (~optional [post     post-expr:expr      ...])
+      (~optional [catch    clause:catch-clause ...])
       (~optional [cleanup  cleanup-expr:expr   ...])
       )
      #'(with-handlers ((~? (~@ [clause.pred clause.action] ...)
@@ -83,7 +83,7 @@
               "defatalize returns an exn")
   (check-true (integer? (defatalize (raise 7)))
               "defatalize returns a non-exn")
-  
+
   (check-output-string (thunk (try [(display "body ")
                                     (raise "oops")]
                                    [catch
@@ -108,7 +108,7 @@
                         (try [(display "body, ") (raise "error")]
                              [catch (string? (display (format "oops:~a" e)))]))
                        "body, oops:error")
-  
+
   (check-output-string (thunk
                         (define down
                           (let/cc up
@@ -120,15 +120,34 @@
                                   (let/cc down (up down))
                                   (display "after-let/cc. ")
                                   void]
-                                 [catch (void (display (format "shouldn't get here:~a" e)))]
                                  [post
                                   (display (format "entering post, db is: ~v. " db))
                                   (set! db 'not-ready)
                                   (display (format "leaving post, db is: ~v. " db))]
+                                 [catch (void (display (format "shouldn't get here:~a" e)))]
                                  [cleanup
                                   (set! db 'finalized)
                                   (display (format "in cleanup, db is: ~v. " db))])))
                         (display "after defining down. ")
                         (down (void)))
                        "in pre before setting, db is: 'not-ready. in body, db is: 'ready. entering post, db is: 'ready. leaving post, db is: 'not-ready. after defining down. in pre before setting, db is: 'not-ready. after-let/cc. entering post, db is: 'ready. leaving post, db is: 'not-ready. in cleanup, db is: 'finalized. after defining down. ")
+
+  (check-output-string
+   (thunk (try [(raise "foo")]
+               [catch
+                   [(λ (e) (and (string? e) (odd? (string-length e))))
+                    (display "odd")]
+                   [(λ (e) (and (string? e) (even? (string-length e))))
+                    (display "even")]]))
+   "odd")
+  
+  (check-output-string
+   (thunk (try [(raise "foobar")]
+               [catch
+                   [(λ (e) (and (string? e) (odd? (string-length e))))
+                    (display "odd")]
+                   [(λ (e) (and (string? e) (even? (string-length e))))
+                    (display "even")]]))
+   "even")
+  
   )

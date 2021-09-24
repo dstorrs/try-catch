@@ -19,37 +19,19 @@
                      [sandbox-memory-limit 50])
         (make-evaluator 'racket)))))
 
-@section{Mock Functions - Ignore This}
-
-The following are mock functions used to make the example code look more realistic.  Skip to @secref["Introduction"].
-
-@examples[
-          #:eval eval
-          #:label #f
-
-          (define (get-db-handle)
-            (displayln "\tmocking the creation of a database handle")
-            'mock-db-handle)
-          (define (close-dbh db) (displayln "\tfake database connection closed"))
-          (define (query-rows db sql)
-            (displayln "\tpretending to run a db query")
-            '(a b c))
-          (define (get-net-handle)
-            (displayln "\tmocking the creation of a TCP connection")
-            'mock-net-handle)
-          (define (close-net-handle net) (displayln "\tfake TCP connection closed"))
-          (define (notify who msg) (printf "\tpretending to notify the ~a! msg is: ~a\n" who msg))
-          (define (ping-server net) (displayln "\tpretending to ping the server"))
-          (define (send-message net msg)
-            (printf "\tserializing struct and pretending to send it to the server: ~v\n" msg)
-            (raise (exn:fail:network "could not connect" (current-continuation-marks))))
-          (struct message (data) #:prefab)
-
-          ]
 
 @section{Introduction}
 
-@racketmodname[try-catch] offers a combination of the error handling found in @racket[with-handlers] and the evaluation assurances provided by @racket[dynamic-wind], along with better end weight for error handling.
+@racketmodname[try-catch] provides a combination of:
+
+@itemlist[
+ @item{The error handling from @racket[with-handlers], except with better end weight and less boilerplate}
+ @item{The protection of @racket[dynamic-wind]}
+ @item{The option to share code between the clauses of the @racket[dynamic-wind]}
+ @item{An extra cleanup phase after the @racket[dynamic-wind] ends}
+ ]
+
+An additional macro, @racket[defatalize], is provided.  It traps all raised values and returns them.
 
 @section{Synopsis}
 
@@ -57,66 +39,119 @@ The following are mock functions used to make the example code look more realist
           #:eval eval
           #:label #f
 
+	  (require try-catch)
+
+	  (define err (defatalize (raise-arguments-error 'foo "failed")))
+	  err
+	  
+	    (try [(displayln "ok")])
+	    
+	    (try [(displayln "body")
+	    	  (raise 'boom)]
+	    	 [catch (symbol? (printf "caught a symbol\n"))
+		        (string? (printf "caught a string\n"))])
+
+	    (try [(displayln "body")
+	    	  (raise 'boom)]
+	    	 [catch (symbol? (printf "caught a symbol: ~v\n" e))
+		        (string? (printf "caught a string: ~v\n" e))])
+
+	    (try [pre (displayln "pre")]
+ 	    	 [(displayln "body")]
+		 [post (displayln "post")])
+
+	    (define down
+	      (let/cc up
+	        (try [pre (displayln "pre")]
+ 	             [(displayln "first body")
+	   	      (let/cc down
+	   	        (up down))
+		      (displayln "second body")
+		      void]
+	   	     [post (displayln "post")])))
+            (down (void))
+
+	    (define down+cleanup
+	      (let/cc up
+	        (try [pre (displayln "pre")]
+ 	             [(displayln "first body")
+	   	      (let/cc down
+	   	        (up down))
+		      (displayln "second body")
+		      void]
+		     [post (displayln "post")]
+		     [cleanup (displayln "cleanup")])))
+            (down+cleanup (void))
+
+
+	    (try [shared (define username "bob")]
+	    	 [pre (printf "in pre, prepping to handle ~a.\n" username)]
+ 	    	 [(printf "in body. hello, ~a.\n" username)]
+	    	 [post (printf "in post, goodbye ~a.\n" username)]
+		 [cleanup (printf "in cleanup, done with ~a." username)])
+
           #reader scribble/comment-reader
-          (let ()
-            ; Here is some code that you might find in an actual Racket program.
-            ; It's hard to follow because the error handling obscures the actual
-            ; purpose, and because the infrastructure code gets in the way.  See
-            ; below for the try-catch equivalent
-            (displayln "shared code/variables...")
-            (define db (get-db-handle))
-            (define net (get-net-handle))
-            (begin0
-                (dynamic-wind
-                  (thunk (displayln "pre...")
-                         (printf "\thandles are available: ~v, ~v\n" db net))
-                  (thunk
-                   (with-handlers ([(and/c exn:fail:contract?
-                                           (compose1 (curry regexp-match #rx"database handle closed")
-                                                     exn-message))
-                                    (λ (e)
-                                      (printf "catch: database handle accidentally closed")
-                                      (notify 'db-admin "database might be down"))]
-                                   [exn:fail:network?
-                                    (λ (e)
-                                      (printf "catch: failure on the example network\n")
-                                      (notify 'net-admin "fake server inaccessible"))])
-                     (displayln "body...")
+	  ; Set up some mock functions for use in the following example
+          (define (get-db-handle)
+            (displayln "opening a database handle")
+            'mock-db-handle)
 
-                     (if (ping-server net)
-                         (send-message net (message (query-rows db "select username from users")))
-                         (raise (exn:fail:network "fake server unavailable" (current-continuation-marks))))))
-                  (thunk (displayln "post...")
-                         (close-dbh db)
-                         (close-net-handle net)))
-              (displayln "cleanup...")
-              (displayln "\tdone.")))
+	  (define (close-dbh db) (displayln "closing a database handle") #f)
+	  
+	  (define (is-quitting-time?) #t)
+	  
+          (define (query-user-data name db)
+            (printf "running a db query...\n")
+	    (hash "user-id"  (random 10)
+	    	  "username" name
+	    	  "ran-at"   (current-inexact-milliseconds)))
 
-          (require try-catch)
-          (displayln "The try-catch version...")
+          #reader scribble/comment-reader
+	  ;  Ensure that database handles are opened/closed as needed
+	  (try [shared (define db #f)]
+               [pre (set! db (get-db-handle))]
+	       [(define user (query-user-data "bob" db))
+	        (display "user is: ") (pretty-print user)
+	        (when (is-quitting-time?) (raise "interrupted before second query because it's quitting time"))
+		(query-user-data "fred" db)]
+	       [post (set! db (close-dbh db))
+	       	     (printf "done. final db handle value: ~a\n" db)]
+     	       [catch (void (printf "ignoring exception: ~a" e))])
+]
 
-          (try [shared (displayln "shared...")
-                 (define db (get-db-handle))
-                 (define net (get-net-handle))]
-               [(displayln "body...")
-                (if (ping-server net)
-                    (send-message net (message (query-rows db "select username from users")))
-                    (raise (exn:fail:network "fake server unavailable" (current-continuation-marks))))]
-               [post (displayln "post...")
-                     (close-dbh db)
-                     (close-net-handle net)]
-               [cleanup (displayln "cleanup...")
-                        (displayln "\tdone.")]
-               [catch
-                   ([(and/c exn:fail:contract?
-                            (compose1 (curry regexp-match #rx"database handle closed")
-                                      exn-message))
-                     (λ (e)
-                       (printf "catch: database handle accidentally closed")
-                       (notify 'db-admin "database might be down"))]
-                    [exn:fail:network?
-                     (λ (e)
-                       (printf "catch: failure on the example network\n")
-                       (notify 'net-admin "fake server inaccessible"))])]
-               )
-          ]
+
+@section{Details}
+
+@defform[(defatalize body-expr ...+)]{Evaluates the specified code.  Exceptions and other @racket[raise]d values will be trapped and become the return value of the @racketid[defatalize] expression.}
+
+@defform[#:literals (shared pre post catch cleanup)     
+         (try maybe-shared maybe-pre body maybe-post maybe-catch maybe-cleanup)
+	 #:grammar	 
+         [(maybe-shared (code:line) [shared expr ...+])
+	 (maybe-pre   (code:line) [pre expr ...+])
+	 (body [expr ...+])
+	 (maybe-post (code:line) [post expr ...+])
+	 (maybe-catch (code:line) [catch (predicate handler-expr) ...+])
+	 (maybe-cleanup (code:line) [cleanup expr ...+])
+	 (predicate (code:line (and/c procedure? (procedure-arity-includes/c 1))))
+	 ]]{
+Applies its clauses in order.  The final value is the value returned by the @racketid[body] (if there are no errors), or of whichever @racketid[catch] clause is executed (if there are).
+
+The code in the @racketid[pre] clause is invoked before @racketid[body] and the code in the @racketid[post] clause is invoked after @racketid[body], regardless of how control enters/exits the @racketid[body] clause (e.g. due to a prompt abort or a continuation invocation).  No special handling is performed for jumps into or out of the @racketid[pre] and @racketid[post] clauses.
+
+Code in the @racketid[shared] clause is visible in all subsequent clauses.  It is run only once, when the @racketid[try] expression is first entered.
+
+Code in the @racketid[cleanup] clause is run only once, when the @racketid[body] clause completes.
+
+The error handling in the @racketid[catch] clause covers all the other clauses.  It consists of a series of subclauses each of which consists of a predicate and a handler expression.  (cf @racket[with-handlers])  The handler expression will be wrapped in a one-argument procedure and the procedure will be called with the value of the exception being tested.  The argument to this function is named @racketid[e] (short for `exception') and is available in the handler.
+
+For purposes of the @racketid[catch] clause, this: 
+
+@racket[(try ['ok][catch (string? (displayln e))])]
+
+Is equvalent to this:
+
+@racket[(with-handlers ([string? (lambda (e) (displayln e))]) 'ok)]
+
+If no @racketid[catch] clause is provided then all exceptions will be re-raised.
+}
