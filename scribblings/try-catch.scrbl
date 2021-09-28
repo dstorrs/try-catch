@@ -1,6 +1,6 @@
 #lang scribble/manual
 
-@(require (for-label racket)
+@(require (for-label racket try-catch)
           racket/sandbox
           scribble/example)
 
