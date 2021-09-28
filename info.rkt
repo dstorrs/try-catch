@@ -3,11 +3,15 @@
 (define collection "try-catch")
 (define version "0.1")
 (define deps '("base"
-               "syntax-classes-lib"
-               "test-more"
-               ))
+               "syntax-classes-lib"))
+
 (define scribblings '(("scribblings/try-catch.scrbl" ())))
 
 (define test-omit-paths '())
 (define build-deps '("racket-doc"
-                     "scribble-lib"))
+                     "scribble-lib"
+                     "rackunit-lib"
+                     "sandbox-lib"))
+
+
+
