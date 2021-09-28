@@ -28,7 +28,7 @@
  @item{The error handling from @racket[with-handlers], except with better end weight and less boilerplate}
  @item{The protection of @racket[dynamic-wind]}
  @item{The option to share code between the clauses of the @racket[dynamic-wind]}
- @item{An extra cleanup phase after the @racket[dynamic-wind] ends}
+ @item{An extra happy-path cleanup phase after the @racket[dynamic-wind] ends}
  ]
 
 An additional macro, @racket[defatalize], is provided.  It traps all raised values and returns them.
@@ -48,13 +48,13 @@ An additional macro, @racket[defatalize], is provided.  It traps all raised valu
 	    
 	    (try [(displayln "body")
 	    	  (raise 'boom)]
-	    	 [catch (symbol? (printf "caught a symbol\n"))
-		        (string? (printf "caught a string\n"))])
+	    	 [catch (string? (printf "caught a string\n"))
+		        (symbol? (printf "caught a symbol\n"))])
 
 	    (try [(displayln "body")
 	    	  (raise 'boom)]
-	    	 [catch (symbol? (printf "caught a symbol: ~v\n" e))
-		        (string? (printf "caught a string: ~v\n" e))])
+	    	 [catch (string? (printf "caught a string: ~v\n" e))
+		  	(symbol? (printf "'e' (the value of the exception) is: ~v\n" e))])
 
 	    (try [pre (displayln "pre")]
  	    	 [(displayln "body")]
@@ -78,10 +78,14 @@ An additional macro, @racket[defatalize], is provided.  It traps all raised valu
 	   	      (let/cc down
 	   	        (up down))
 		      (displayln "second body")
+		      (raise 'boom)
 		      void]
 		     [post (displayln "post")]
+		     [catch (symbol? (and (printf "caught a symbol: ~a" e) 'symbol-caught))]
 		     [cleanup (displayln "cleanup")])))
+	    down+cleanup
             (down+cleanup (void))
+	    down+cleanup
 
 
 	    (try [shared (define username "bob")]
@@ -141,7 +145,7 @@ The code in the @racketid[pre] clause is invoked before @racketid[body] and the 
 
 Code in the @racketid[shared] clause is visible in all subsequent clauses.  It is run only once, when the @racketid[try] expression is first entered.
 
-Code in the @racketid[cleanup] clause is run only once, when the @racketid[body] clause completes.
+Code in the @racketid[cleanup] clause is run only once, when the @racketid[body] clause completes normally.  It is not run if an error is raised.
 
 The error handling in the @racketid[catch] clause covers all the other clauses.  It consists of a series of subclauses each of which consists of a predicate and a handler expression.  (cf @racket[with-handlers])  The handler expression will be wrapped in a one-argument procedure and the procedure will be called with the value of the exception being tested.  The argument to this function is named @racketid[e] (short for `exception') and is available in the handler.
 
