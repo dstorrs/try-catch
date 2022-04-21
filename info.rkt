@@ -1,7 +1,7 @@
 #lang info
 
 (define collection "try-catch")
-(define version "0.1")
+(define version "0.2")
 (define deps '("base"
                "syntax-classes-lib"))
 
