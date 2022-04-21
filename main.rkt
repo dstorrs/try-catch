@@ -10,9 +10,9 @@
 
   ; The datum->syntax syntax->datum dance is to non-hygienically make 'e' available
   (define-syntax-class catch-clause
-    (pattern (p:expr a:expr)
+    (pattern (p:expr a:expr ...+)
              #:with pred #'(λ (e) (p e))
-             #:with action (datum->syntax stx (syntax->datum #'(λ (e) a)))))
+             #:with action (datum->syntax stx (syntax->datum #'(λ (e) a ...)))))
 
   (syntax-parse stx
     #:datum-literals (shared try pre catch post cleanup)
