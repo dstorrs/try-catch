@@ -135,7 +135,7 @@ An additional macro, @racket[defatalize], is provided.  It traps all raised valu
 	 (maybe-pre   (code:line) [pre expr ...+])
 	 (body [expr ...+])
 	 (maybe-post (code:line) [post expr ...+])
-	 (maybe-catch (code:line) [catch (predicate handler-expr) ...+])
+	 (maybe-catch (code:line) [catch (predicate handler-expr ...+) ...+])
 	 (maybe-cleanup (code:line) [cleanup expr ...+])
 	 (predicate (code:line (and/c procedure? (procedure-arity-includes/c 1))))
 	 ]]{
@@ -145,17 +145,17 @@ The code in the @racketid[pre] clause is invoked before @racketid[body] and the 
 
 Code in the @racketid[shared] clause is visible in all subsequent clauses.  It is run only once, when the @racketid[try] expression is first entered.
 
-Code in the @racketid[cleanup] clause is run only once, when the @racketid[body] clause completes normally.  It is not run if an error is raised.
+Code in the @racketid[cleanup] clause is run only once, when the @racketid[body] clause completes normally.  It is not run if an error is raised.  If you want cleanup code that is guaranteed to run, put it in the @racketid[post] clause.
 
-The error handling in the @racketid[catch] clause covers all the other clauses.  It consists of a series of subclauses each of which consists of a predicate and a handler expression.  (cf @racket[with-handlers])  The handler expression will be wrapped in a one-argument procedure and the procedure will be called with the value of the exception being tested.  The argument to this function is named @racketid[e] (short for `exception') and is available in the handler.
+The error handling in the @racketid[catch] clause covers all the other clauses.  It consists of a series of subclauses each of which consists of a predicate and one or more handler expressions.  (cf @racket[with-handlers])  The handler expression will become the body of a one-argument procedure and the procedure will be called with the value of the exception being tested.  The argument to this function is named @racketid[e] (short for `exception') and is available in the handler.
 
 For purposes of the @racketid[catch] clause, this: 
 
-@racket[(try ['ok][catch (string? (displayln e))])]
+@racket[(try ['ok][catch (string? (displayln e) (displayln "done"))])]
 
 Is equvalent to this:
 
-@racket[(with-handlers ([string? (lambda (e) (displayln e))]) 'ok)]
+@racket[(with-handlers ([string? (lambda (e) (displayln e) (displayln "done"))]) 'ok)]
 
 If no @racketid[catch] clause is provided then all exceptions will be re-raised.
 }
